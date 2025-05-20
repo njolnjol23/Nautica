@@ -1,4 +1,6 @@
 import { connect } from "cloudflare:sockets";
+// import { createHash, createDecipheriv } from "node:crypto";
+// import { Buffer } from "node:buffer";
 
 // Variables
 const rootDomain = "foolvpn.me"; // Ganti dengan domain utama kalian
@@ -22,6 +24,8 @@ const DNS_SERVER_PORT = 53;
 const PROXY_HEALTH_CHECK_API = "https://id1.foolvpn.me/api/v1/check";
 const CONVERTER_URL = "https://api.foolvpn.me/convert";
 const DONATE_LINK = "https://trakteer.id/dickymuliafiqri/tip";
+const BAD_WORDS_LIST =
+  "https://gist.githubusercontent.com/adierebel/a69396d79b787b84d89b45002cb37cd6/raw/6df5f8728b18699496ad588b3953931078ab9cf1/kata-kasar.txt";
 const PROXY_PER_PAGE = 24;
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
@@ -334,11 +338,12 @@ export default {
             case "raw":
               finalResult = result.join("\n");
               break;
+            case "v2ray":
+              finalResult = btoa(result.join("\n"));
+              break;
             case "clash":
             case "sfa":
             case "bfr":
-              // case "v2ray":
-
               const res = await fetch(CONVERTER_URL, {
                 method: "POST",
                 body: JSON.stringify({
@@ -848,6 +853,39 @@ function parseNajortHeader(buffer) {
   };
 }
 
+// function parseSsemvHeader(buffer) {
+//   const date = new Date(new Date().toLocaleString("en", { timeZone: "Asia/Jakarta" }));
+//   console.log(`Date: ${date}`);
+//   console.log(`First 16 bytes: ${arrayBufferToHex(buffer.slice(0, 17))}`);
+//   console.log(`Remaining bytes: ${arrayBufferToHex(buffer.slice(17))}`);
+
+//   // ===== KEY GENERATION =====
+//   const userId = "3b670322-6ac1-41ec-9ff3-714245d41bf7";
+//   const uuidConst = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
+
+//   // Step 1: Generate AES key
+//   const key = createHash("md5")
+//     .update(userId + uuidConst)
+//     .digest();
+//   console.log(`KEY: ${key}`);
+
+//   // Step 2: Generate Timestamp (current Unix time)
+//   const timestamp = Math.floor(date.getTime() / 1000); // current timestamp in seconds
+
+//   // Step 3: Generate IV from Timestamp
+//   const x = Buffer.alloc(8);
+//   x.writeBigUInt64BE(BigInt(timestamp)); // 8-byte timestamp (Big Endian)
+//   const iv_source = Buffer.concat([x, x, x, x]);
+//   const iv = createHash("md5").update(iv_source).digest();
+//   console.log(`IV: ${iv}`);
+
+//   // Step 4: Decrypt using AES-128-CFB
+//   const decipher = createDecipheriv("aes-128-cfb", key, iv);
+//   const decrypted = Buffer.concat([decipher.update(buffer.slice(17)), decipher.final()]);
+
+//   console.log(`Decrypted Header: ${decrypted.toString("hex")}`);
+// }
+
 async function remoteSocketToWS(remoteSocket, webSocket, responseHeader, retry, log) {
   let header = responseHeader;
   let hasIncomingData = false;
@@ -996,7 +1034,19 @@ class CloudflareApi {
 
     try {
       const domainTest = await fetch(`https://${domain.replaceAll("." + APP_DOMAIN, "")}`);
-      if (domainTest.status == 530) return 530;
+      if (domainTest.status == 530) return domainTest.status;
+
+      const badWordsListRes = await fetch(BAD_WORDS_LIST);
+      if (badWordsListRes.status == 200) {
+        const badWordsList = (await badWordsListRes.text()).split("\n");
+        for (const badWord of badWordsList) {
+          if (domain.includes(badWord.toLowerCase())) {
+            return 403;
+          }
+        }
+      } else {
+        return 403;
+      }
     } catch (e) {
       return 400;
     }
